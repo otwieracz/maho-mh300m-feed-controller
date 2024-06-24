@@ -5,9 +5,9 @@
 	1. Output calibration.
         - Set the output scale to full range (0-10V), control the output voltage with the potentiometer.
 		- Set the potentiometer to minimum value where stable feed is achieved.
-		- Store the 15bit value in EEPROM as `min_output_value`.
+		- Store the 15bit value in EEPROM as `dac_min`.
 		- Set the potentiometer to value where the output value, measured at the Parker 512C tach input, is `4.16V`.
-		- Store the 15bit value in EEPROM as `max_output_value`.
+		- Store the 15bit value in EEPROM as `dac_500`.
 	2. Input calibration
 		- Repeatedly ask for setting the input endpoint for every of the pre-marked positions (0, 12.5, 31, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500)
 		- For each position, store input ADC readout (10bit, 0-1023) in EEPROM
