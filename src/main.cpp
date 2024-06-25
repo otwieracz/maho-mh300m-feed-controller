@@ -7,25 +7,12 @@ DFRobot_GP8211S dac;
 #define ADC_MAX 1023
 #define DAC_MAX 32767
 
-#define ASCII_BSPACE 8
-#define ASCII_CR 13
-#define ASCII_SPACE 32
-
-void clear_line(int len) {
-  for (int i = 0; i < len; i++) {
-    Serial.write(ASCII_SPACE);
-  }
-  Serial.write(ASCII_CR);
-}
-
-void backspace(int len) {
-  for (int i = 0; i < len; i++) {
-    Serial.write(ASCII_BSPACE);
-  }
-}
-
 #define ANALOG_PIN A0
+#define RAPID_BTN_PIN 52
+#define CREEP_BTN_PIN 53
 #define N_STEPS 16 // Number of steps in the conversion table
+#define RAPID 1200 // Rapid feed rate in mm/min
+#define CREEP_DIV 10 // Creep feed rate divisor
 
 #define CONFIG_VERSION 2
 struct EepromConfig {
@@ -82,6 +69,13 @@ void reset_eeprom_config() {
 void setup_dac() {
   Serial.println("setting up dac");
   dac.setDACOutRange(dac.eOutputRange10V);
+}
+
+// Setup buttons
+void setup_buttons() {
+  Serial.println("setting up buttons");
+  pinMode(RAPID_BTN_PIN, INPUT_PULLUP);
+  pinMode(CREEP_BTN_PIN, INPUT_PULLUP);
 }
 
 //
@@ -170,13 +164,33 @@ int find_range(int adc_value) {
 }
 
 // For given ADC value, return the feedrate in mm/min
-int feedrate(int adc_value) {
+int feedrate() {
+  int adc_value = analogRead(ANALOG_PIN);
   int range_id = find_range(adc_value);
-  return map(adc_value, config.adc_setpoint[range_id], config.adc_setpoint[range_id + 1], feed_table[range_id], feed_table[range_id + 1]);
+
+  bool rapid = digitalRead(RAPID_BTN_PIN) == LOW;
+  bool creep = digitalRead(CREEP_BTN_PIN) == LOW;
+
+  int feedrate = 0;
+
+  if (rapid) {
+    feedrate = RAPID;
+  } else {
+    feedrate = map(adc_value, config.adc_setpoint[range_id], config.adc_setpoint[range_id + 1], feed_table[range_id], feed_table[range_id + 1]);
+
+    if (creep) {
+      feedrate = feedrate / CREEP_DIV;
+    }
+  }
+  char buf[64];
+  sprintf(buf, "adc: %d, range: %d-%d, feed: %dmm/min", adc_value, feed_table[range_id], feed_table[range_id + 1], feedrate);
+  Serial.println(buf);
+  return feedrate;
 }
 
 void setup() {
   Serial.begin(9600);
+  setup_buttons();
   setup_dac();
   if(!read_config(&config)) {
     initialize_config();
@@ -187,11 +201,6 @@ void setup() {
 
 
 void loop() {
-  int val = analogRead(ANALOG_PIN);
-  int range_id = find_range(val);
-  int feed = feedrate(val);
-  char buf[64];
-  sprintf(buf, "adc: %d, range: %d-%d, feed: %dmm/min", val, feed_table[range_id], feed_table[range_id + 1], feed);
-  Serial.println(buf);
+  feedrate();
   delay(1000);
 }
