@@ -27,7 +27,7 @@ void backspace(int len) {
 #define ANALOG_PIN A0
 #define N_STEPS 16 // Number of steps in the conversion table
 
-#define CONFIG_VERSION 1
+#define CONFIG_VERSION 2
 struct EepromConfig {
   int version;
   int dac_min; // Minimum DAC value for stable feed rate (15bit)
@@ -37,7 +37,7 @@ struct EepromConfig {
 
 // ADC setpoints (feed rate) for each step in the conversion table
 // note: 12mm/min is used instead of 12.5mm/min to avoid floating point arithmetic
-int adc_steps[N_STEPS] = {0, 12, 20, 31, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500};
+int feed_table[N_STEPS] = {0, 12, 20, 31, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500};
 
 // output uV per mm/min (500mm/min = 4.16V, 1mm/min = 0.00832V, 0.00832V * 1000 * 1000 = 8320uV)
 int uv_per_mmmin = 8320;
@@ -112,7 +112,7 @@ int calibrate_dac(const char *name, unsigned int wait_time) {
 // Calibrate ADC steps
 // 
 void calibrate_adc_step(unsigned int step, int *buf, unsigned int wait_time) {
-  int feed = adc_steps[step];
+  int feed = feed_table[step];
 
   Serial.print("config.feed_");
   Serial.print(feed);
@@ -144,10 +144,35 @@ void initialize_config() {
   };
 
   for(int i = 0; i < N_STEPS; i++) {
-    calibrate_adc_step(i, config.adc_setpoint, 5500);
+    calibrate_adc_step(i, new_config.adc_setpoint, 5500);
   }
 
   EEPROM.put(0, new_config);
+}
+
+// Value mapping
+//
+
+// For given ADC input range, return the id of the lower bound
+// of the range that contains the value
+int find_range(int adc_value) {
+  // Example:
+  // adc_setpoint = {0, 100, 200, 300}
+  // adc_value = 150
+  // [1]:100 < adc_value:150 <= [2]:200
+  // return 1
+  for (int i = 0; i < N_STEPS-1; i++) {
+    if (config.adc_setpoint[i] < adc_value && adc_value <= config.adc_setpoint[i+1]) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+// For given ADC value, return the feedrate in mm/min
+int feedrate(int adc_value) {
+  int range_id = find_range(adc_value);
+  return map(adc_value, config.adc_setpoint[range_id], config.adc_setpoint[range_id + 1], feed_table[range_id], feed_table[range_id + 1]);
 }
 
 void setup() {
@@ -155,6 +180,7 @@ void setup() {
   setup_dac();
   if(!read_config(&config)) {
     initialize_config();
+    read_config(&config);
   }
 
 }
@@ -162,5 +188,10 @@ void setup() {
 
 void loop() {
   int val = analogRead(ANALOG_PIN);
-  delay(200);
+  int range_id = find_range(val);
+  int feed = feedrate(val);
+  char buf[64];
+  sprintf(buf, "adc: %d, range: %d-%d, feed: %dmm/min", val, feed_table[range_id], feed_table[range_id + 1], feed);
+  Serial.println(buf);
+  delay(1000);
 }
