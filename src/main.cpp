@@ -10,27 +10,25 @@ DFRobot_GP8211S dac;
 #define ANALOG_PIN A0
 #define RAPID_BTN_PIN 52
 #define CREEP_BTN_PIN 53
-#define N_STEPS 16 // Number of steps in the conversion table
-#define RAPID 1200 // Rapid feed rate in mm/min
-#define CREEP_DIV 10 // Creep feed rate divisor
+#define N_STEPS 16    // Number of steps in the conversion table
+#define RAPID 1200    // Rapid feed rate in mm/min
+#define CREEP_DIV 10  // Creep feed rate divisor
 
 #define CONFIG_VERSION 2
 struct EepromConfig {
   int version;
-  int dac_min; // Minimum DAC value for stable feed rate (15bit)
-  int dac_500; // DAC value for 500mm/min feed rate - 4.16V measured at controller (15bit)
-  int adc_setpoint[N_STEPS]; // ADC setpoint for each step in the conversion table
+  int dac_min;  // Minimum DAC value for stable feed rate (15bit)
+  int dac_500;  // DAC value for 500mm/min feed rate - 4.16V measured at
+                // controller (15bit)
+  int adc_setpoint[N_STEPS];  // ADC setpoint for each step in the conversion
+                              // table
 };
 
 // ADC setpoints (feed rate) for each step in the conversion table
-// note: 12mm/min is used instead of 12.5mm/min to avoid floating point arithmetic
-int feed_table[N_STEPS] = {0, 12, 20, 31, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500};
-
-// output uV per mm/min (500mm/min = 4.16V, 1mm/min = 0.00832V, 0.00832V * 1000 * 1000 = 8320uV)
-int uv_per_mmmin = 8320;
-
-// DAC (15bit) values for 1V: 32767 / 10 = 3276.7 (will be truncated to 3276)
-int dac_1v = DAC_MAX / 10;
+// note: 12mm/min is used instead of 12.5mm/min to avoid floating point
+// arithmetic
+int feed_table[N_STEPS] = {0,   12,  20,  31,  40,  50,  63,  80,
+                           100, 125, 160, 200, 250, 315, 400, 500};
 
 // Config - unititialized, to be read from EEPROM
 EepromConfig config;
@@ -57,17 +55,20 @@ bool read_config(EepromConfig *config) {
 // Write empty config to EEPROM with version 0, enforcing reinitialization
 void reset_eeprom_config() {
   EepromConfig default_config = {
-    .version = 0,
-    .dac_min = 0,
-    .dac_500 = 0,
-    .adc_setpoint = {0}
-  };
+      .version = 0, .dac_min = 0, .dac_500 = 0, .adc_setpoint = {0}};
   EEPROM.put(0, default_config);
 }
 
 // Setup DAC
 void setup_dac() {
   Serial.println("setting up dac");
+  while (dac.begin() != 0) {
+    Serial.println(
+        "Communication with the device has encountered a failure. Please "
+        "verify the integrity of the connection or ensure that the device "
+        "address is properly configured.");
+    delay(1000);
+  }
   dac.setDACOutRange(dac.eOutputRange10V);
 }
 
@@ -104,7 +105,7 @@ int calibrate_dac(const char *name, unsigned int wait_time) {
 }
 
 // Calibrate ADC steps
-// 
+//
 void calibrate_adc_step(unsigned int step, int *buf, unsigned int wait_time) {
   int feed = feed_table[step];
 
@@ -127,17 +128,15 @@ void calibrate_adc_step(unsigned int step, int *buf, unsigned int wait_time) {
 
 void initialize_config() {
   Serial.println("initializing configuration");
-  int dac_min = calibrate_dac("dac_min", 5500);
-  int dac_500 = calibrate_dac("dac_500", 5500);
+  int dac_min = calibrate_dac("dac_min", 30000);
+  int dac_500 = calibrate_dac("dac_500", 30000);
 
-  EepromConfig new_config = {
-    .version = CONFIG_VERSION,
-    .dac_min = dac_min,
-    .dac_500 = dac_500,
-    .adc_setpoint = {0}
-  };
+  EepromConfig new_config = {.version = CONFIG_VERSION,
+                             .dac_min = dac_min,
+                             .dac_500 = dac_500,
+                             .adc_setpoint = {0}};
 
-  for(int i = 0; i < N_STEPS; i++) {
+  for (int i = 0; i < N_STEPS; i++) {
     calibrate_adc_step(i, new_config.adc_setpoint, 5500);
   }
 
@@ -155,8 +154,11 @@ int find_range(int adc_value) {
   // adc_value = 150
   // [1]:100 < adc_value:150 <= [2]:200
   // return 1
-  for (int i = 0; i < N_STEPS-1; i++) {
-    if (config.adc_setpoint[i] < adc_value && adc_value <= config.adc_setpoint[i+1]) {
+
+  // TODO: handle less than 0 and greater than N_STEPS-1
+  for (int i = 0; i < N_STEPS - 1; i++) {
+    if (config.adc_setpoint[i] < adc_value &&
+        adc_value <= config.adc_setpoint[i + 1]) {
       return i;
     }
   }
@@ -164,6 +166,8 @@ int find_range(int adc_value) {
 }
 
 // For given ADC value, return the feedrate in mm/min
+// based on the conversion table and the current setpoint
+// and the state of the rapid and creep buttons
 int feedrate() {
   int adc_value = analogRead(ANALOG_PIN);
   int range_id = find_range(adc_value);
@@ -171,36 +175,66 @@ int feedrate() {
   bool rapid = digitalRead(RAPID_BTN_PIN) == LOW;
   bool creep = digitalRead(CREEP_BTN_PIN) == LOW;
 
+  /* Round adc values lower than 12 (second step, first after 0) to 0*/
+  if (adc_value < config.adc_setpoint[1]) {
+    return 0;
+  }
+
   int feedrate = 0;
 
   if (rapid) {
     feedrate = RAPID;
+  } else if (adc_value == 0) {
+    feedrate = 0;
   } else {
-    feedrate = map(adc_value, config.adc_setpoint[range_id], config.adc_setpoint[range_id + 1], feed_table[range_id], feed_table[range_id + 1]);
-
-    if (creep) {
-      feedrate = feedrate / CREEP_DIV;
-    }
+    feedrate = map(adc_value, config.adc_setpoint[range_id],
+                   config.adc_setpoint[range_id + 1], feed_table[range_id],
+                   feed_table[range_id + 1]);
   }
-  char buf[64];
-  sprintf(buf, "adc: %d, range: %d-%d, feed: %dmm/min", adc_value, feed_table[range_id], feed_table[range_id + 1], feedrate);
-  Serial.println(buf);
+
+  if (creep && !rapid) {
+    feedrate = feedrate / CREEP_DIV;
+  }
   return feedrate;
+}
+
+// Convert feedrate in mm/min to DAC value
+// based on the current configuration
+// If reported feedrate is non-zero, but the calculated DAC value is below the
+// minimum, return the minimum DAC value to ensure stable operation
+long int feedrate_to_dac(int feedrate) {
+  long feed_dac = (long)feedrate * (long)config.dac_500 / 500;
+
+  if (feedrate == 0) {
+    return 0;
+  } else if (feed_dac > DAC_MAX) {
+    return DAC_MAX;
+  } else if (feed_dac > 0 && feed_dac < config.dac_min) {
+    return config.dac_min;
+  } else {
+    return feed_dac;
+  }
 }
 
 void setup() {
   Serial.begin(9600);
   setup_buttons();
   setup_dac();
-  if(!read_config(&config)) {
+  if (!read_config(&config)) {
     initialize_config();
     read_config(&config);
   }
-
 }
 
-
 void loop() {
-  feedrate();
+  int feedrate_val = feedrate();
+  long int dac_value = feedrate_to_dac(feedrate_val);
+  long int mv = map(dac_value, 0, DAC_MAX, 0, 10000);
+
+  dac.setDACOutVoltage(dac_value);
+
+  char buf[64];
+  sprintf(buf, "feedrate: %4dmm/min, dac: %5ld mV", feedrate_val, mv);
+  Serial.println(buf);
   delay(1000);
 }
