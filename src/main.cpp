@@ -1,15 +1,16 @@
 #include <Arduino.h>
-#include <DFRobot_GP8XXX.h>
 #include <EEPROM.h>
+#include <LowPower.h>
+#include <MCP41HVX1.h>
+#include <config.h>
+#include <SPI.h>
+#include <blinkmsg.h>
 
-DFRobot_GP8211S dac;
+MCP41HVX1 digipot(CS_PIN, SHDN_PIN, MCP41HVX1_PIN_NOT_CONFIGURED);
 
 #define ADC_MAX 1023
-#define DAC_MAX 32767
+#define DIGIPOT_MAX 255
 
-#define ANALOG_PIN A0
-#define RAPID_BTN_PIN 52
-#define CREEP_BTN_PIN 53
 #define N_STEPS 16    // Number of steps in the conversion table
 #define RAPID 1200    // Rapid feed rate in mm/min
 #define CREEP_DIV 10  // Creep feed rate divisor
@@ -17,9 +18,9 @@ DFRobot_GP8211S dac;
 #define CONFIG_VERSION 2
 struct EepromConfig {
   int version;
-  int dac_min;  // Minimum DAC value for stable feed rate (15bit)
-  int dac_500;  // DAC value for 500mm/min feed rate - 4.16V measured at
-                // controller (15bit)
+  int digipot_min;  // Minimum digipot value for stable feed rate (15bit)
+  int digipot_500;  // digipot value for 500mm/min feed rate - 4.16V measured at
+                    // controller (15bit)
   int adc_setpoint[N_STEPS];  // ADC setpoint for each step in the conversion
                               // table
 };
@@ -37,13 +38,29 @@ EepromConfig config;
 // Setup functions
 //
 
+// Reset configuration
+void reset_eeprom_config(int addr) {
+  EepromConfig default_config = {
+      .version = 0, .digipot_min = 0, .digipot_500 = 0, .adc_setpoint = {0}};
+  EEPROM.put(addr, default_config);
+}
+
 // Read config from EEPROM
 bool read_config(EepromConfig *config) {
   int addr = 0;
+
+  // Reset configuration if CLEAR_EEPROM button is pressed
+  if (digitalRead(CLEAR_EEPROM_BTN_PIN) == LOW) {
+    Serial.println("resetting configuration");
+    reset_eeprom_config(addr);
+    return false;
+  }
+
   EepromConfig eeprom_config;
   EEPROM.get(addr, eeprom_config);
   if (eeprom_config.version == CONFIG_VERSION) {
     Serial.println("valid config");
+    blinkmsg(BLINKMSG_CONFIG_OK);
     *config = eeprom_config;
     return true;
   } else {
@@ -55,21 +72,8 @@ bool read_config(EepromConfig *config) {
 // Write empty config to EEPROM with version 0, enforcing reinitialization
 void reset_eeprom_config() {
   EepromConfig default_config = {
-      .version = 0, .dac_min = 0, .dac_500 = 0, .adc_setpoint = {0}};
+      .version = 0, .digipot_min = 0, .digipot_500 = 0, .adc_setpoint = {0}};
   EEPROM.put(0, default_config);
-}
-
-// Setup DAC
-void setup_dac() {
-  Serial.println("setting up dac");
-  while (dac.begin() != 0) {
-    Serial.println(
-        "Communication with the device has encountered a failure. Please "
-        "verify the integrity of the connection or ensure that the device "
-        "address is properly configured.");
-    delay(1000);
-  }
-  dac.setDACOutRange(dac.eOutputRange10V);
 }
 
 // Setup buttons
@@ -77,31 +81,34 @@ void setup_buttons() {
   Serial.println("setting up buttons");
   pinMode(RAPID_BTN_PIN, INPUT_PULLUP);
   pinMode(CREEP_BTN_PIN, INPUT_PULLUP);
+  pinMode(CLEAR_EEPROM_BTN_PIN, INPUT_PULLUP);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, HIGH);
 }
 
 //
 // Calibration procedures
 //
 
-// Calibrate DAC
-int calibrate_dac(const char *name, unsigned int wait_time) {
+// Calibrate digital potentionmeter
+int calibrate_digipot(const char *name, unsigned int wait_time) {
   Serial.print("config.");
   Serial.print(name);
   Serial.print(": ");
 
   // Keep reading the analog input for wait_time ms
   unsigned long start = millis();
-  int dac_out = 0;
+  int digipot_out = 0;
   while (millis() - start < wait_time) {
     int adc_in = analogRead(ANALOG_PIN);
-    dac_out = map(adc_in, 0, ADC_MAX, 0, DAC_MAX);
-    dac.setDACOutVoltage(dac_out);
-    delay(100);
+    digipot_out = map(adc_in, 0, ADC_MAX, 0, DIGIPOT_MAX);
+    digipot.WiperSetPosition(digipot_out);
+    LowPower.powerDown(SLEEP_120MS, ADC_OFF, BOD_OFF);
   }
 
-  Serial.println(dac_out);
+  Serial.println(digipot_out);
 
-  return dac_out;
+  return digipot_out;
 }
 
 // Calibrate ADC steps
@@ -118,7 +125,7 @@ void calibrate_adc_step(unsigned int step, int *buf, unsigned int wait_time) {
   int adc_in = 0;
   while (millis() - start < wait_time) {
     adc_in = analogRead(ANALOG_PIN);
-    delay(100);
+    LowPower.powerDown(SLEEP_120MS, ADC_OFF, BOD_OFF);
   }
 
   buf[step] = adc_in;
@@ -128,18 +135,24 @@ void calibrate_adc_step(unsigned int step, int *buf, unsigned int wait_time) {
 
 void initialize_config() {
   Serial.println("initializing configuration");
-  int dac_min = calibrate_dac("dac_min", 30000);
-  int dac_500 = calibrate_dac("dac_500", 30000);
+  blinkmsg(BLINKMSG_SETUP);
+  blinkmsg(BLINKMSG_PAUSE);
+  blinkmsg(BLINKMSG_SETUP_DIGIPOT_MIN);
+  int digipot_min = calibrate_digipot("digipot_min", 30000);
+  blinkmsg(BLINKMSG_SETUP_DIGIPOT_500);
+  int digipot_500 = calibrate_digipot("digipot_500", 30000);
 
   EepromConfig new_config = {.version = CONFIG_VERSION,
-                             .dac_min = dac_min,
-                             .dac_500 = dac_500,
+                             .digipot_min = digipot_min,
+                             .digipot_500 = digipot_500,
                              .adc_setpoint = {0}};
 
   for (int i = 0; i < N_STEPS; i++) {
+    blinkmsg(BLINKMSG_SETUP_ADC_SETPOINT);
     calibrate_adc_step(i, new_config.adc_setpoint, 5500);
   }
 
+  blinkmsg(BLINKMSG_CONFIG_OK);
   EEPROM.put(0, new_config);
 }
 
@@ -198,43 +211,56 @@ int feedrate() {
   return feedrate;
 }
 
-// Convert feedrate in mm/min to DAC value
+// Convert feedrate in mm/min to digipot value
 // based on the current configuration
-// If reported feedrate is non-zero, but the calculated DAC value is below the
-// minimum, return the minimum DAC value to ensure stable operation
-long int feedrate_to_dac(int feedrate) {
-  long feed_dac = (long)feedrate * (long)config.dac_500 / 500;
+// If reported feedrate is non-zero, but the calculated digipot value is below
+// the minimum, return the minimum digipot value to ensure stable operation
+long int feedrate_to_digipot(int feedrate) {
+  long feed_digipot = (long)feedrate * (long)config.digipot_500 / 500;
 
   if (feedrate == 0) {
     return 0;
-  } else if (feed_dac > DAC_MAX) {
-    return DAC_MAX;
-  } else if (feed_dac > 0 && feed_dac < config.dac_min) {
-    return config.dac_min;
+  } else if (feed_digipot > DIGIPOT_MAX) {
+    return DIGIPOT_MAX;
+  } else if (feed_digipot > 0 && feed_digipot < config.digipot_min) {
+    return config.digipot_min;
   } else {
-    return feed_dac;
+    return feed_digipot;
   }
 }
+
+bool setup_complete = false;
 
 void setup() {
   Serial.begin(9600);
   setup_buttons();
-  setup_dac();
+
   if (!read_config(&config)) {
     initialize_config();
     read_config(&config);
   }
+
+  Serial.flush();
 }
 
 void loop() {
   int feedrate_val = feedrate();
-  long int dac_value = feedrate_to_dac(feedrate_val);
-  long int mv = map(dac_value, 0, DAC_MAX, 0, 10000);
+  long int digipot_value = feedrate_to_digipot(feedrate_val);
+  long int mv = map(digipot_value, 0, DIGIPOT_MAX, 0, 10000);
 
-  dac.setDACOutVoltage(dac_value);
+  if (digipot_value > 0) {
+    digipot.ResistorNetworkEnable();
+    digipot.WiperSetPosition(digipot_value);
+  } else {
+    digipot.ResistorNetworkDisable();
+  }
 
+  int v = mv / 1000;
+  int v_mod = mv % 1000;
   char buf[64];
-  sprintf(buf, "feedrate: %4dmm/min, dac: %5ld mV", feedrate_val, mv);
+  sprintf(buf, "fr: %4dmm/min / %1d.%02dV", feedrate_val, v, v_mod / 10);
   Serial.println(buf);
-  delay(1000);
+  Serial.flush();
+
+  LowPower.powerDown(SLEEP_250MS, ADC_OFF, BOD_OFF);
 }
