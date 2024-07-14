@@ -2,9 +2,9 @@
 #include <EEPROM.h>
 #include <LowPower.h>
 #include <MCP41HVX1.h>
-#include <config.h>
 #include <SPI.h>
 #include <blinkmsg.h>
+#include <config.h>
 
 MCP41HVX1 digipot(CS_PIN, SHDN_PIN, MCP41HVX1_PIN_NOT_CONFIGURED);
 
@@ -95,6 +95,7 @@ int calibrate_digipot(const char *name, unsigned int wait_time) {
   Serial.print("config.");
   Serial.print(name);
   Serial.print(": ");
+  Serial.flush();
 
   // Keep reading the analog input for wait_time ms
   unsigned long start = millis();
@@ -103,7 +104,7 @@ int calibrate_digipot(const char *name, unsigned int wait_time) {
     int adc_in = analogRead(ANALOG_PIN);
     digipot_out = map(adc_in, 0, ADC_MAX, 0, DIGIPOT_MAX);
     digipot.WiperSetPosition(digipot_out);
-    LowPower.powerDown(SLEEP_120MS, ADC_OFF, BOD_OFF);
+    delay(100);
   }
 
   Serial.println(digipot_out);
@@ -125,7 +126,7 @@ void calibrate_adc_step(unsigned int step, int *buf, unsigned int wait_time) {
   int adc_in = 0;
   while (millis() - start < wait_time) {
     adc_in = analogRead(ANALOG_PIN);
-    LowPower.powerDown(SLEEP_120MS, ADC_OFF, BOD_OFF);
+    delay(100);
   }
 
   buf[step] = adc_in;
@@ -135,8 +136,6 @@ void calibrate_adc_step(unsigned int step, int *buf, unsigned int wait_time) {
 
 void initialize_config() {
   Serial.println("initializing configuration");
-  blinkmsg(BLINKMSG_SETUP);
-  blinkmsg(BLINKMSG_PAUSE);
   blinkmsg(BLINKMSG_SETUP_DIGIPOT_MIN);
   int digipot_min = calibrate_digipot("digipot_min", 30000);
   blinkmsg(BLINKMSG_SETUP_DIGIPOT_500);
@@ -168,7 +167,6 @@ int find_range(int adc_value) {
   // [1]:100 < adc_value:150 <= [2]:200
   // return 1
 
-  // TODO: handle less than 0 and greater than N_STEPS-1
   for (int i = 0; i < N_STEPS - 1; i++) {
     if (config.adc_setpoint[i] < adc_value &&
         adc_value <= config.adc_setpoint[i + 1]) {
@@ -188,15 +186,14 @@ int feedrate() {
   bool rapid = digitalRead(RAPID_BTN_PIN) == LOW;
   bool creep = digitalRead(CREEP_BTN_PIN) == LOW;
 
-  /* Round adc values lower than 12 (second step, first after 0) to 0*/
-  if (adc_value < config.adc_setpoint[1]) {
-    return 0;
-  }
-
   int feedrate = 0;
 
   if (rapid) {
     feedrate = RAPID;
+  } else if (adc_value < config.adc_setpoint[1]) {
+    /* Round adc values for feeds lower than 12mm/min (between 0 and first step)
+     * to 0 to avoid feedrate oscillation */
+    feedrate = 0;
   } else if (adc_value == 0) {
     feedrate = 0;
   } else {
@@ -233,6 +230,8 @@ bool setup_complete = false;
 
 void setup() {
   Serial.begin(9600);
+  Serial.println("starting");
+  Serial.flush();
   setup_buttons();
 
   if (!read_config(&config)) {
