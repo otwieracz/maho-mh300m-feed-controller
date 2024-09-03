@@ -12,12 +12,14 @@
 // Arduino Pro Mini 3.3V 8MHz
 #ifdef ARDUINO_AVR_PRO
 #define ANALOG_PIN A0
-#define RAPID_BTN_PIN 7 
-#define CREEP_BTN_PIN 8
+#define RAPID_BTN_PIN 5
+#define CREEP_BTN_PIN 4
 #define CLEAR_EEPROM_BTN_PIN 9
 #define CS_PIN 10
-#define SHDN_PIN 6
-#define LED_PIN 5
+// #define SHDN_PIN 6
+// #define LED_PIN 5
+#define SHDN_PIN 3
+#define LED_PIN 2
 #endif
 
 
