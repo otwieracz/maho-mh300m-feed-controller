@@ -3261,7 +3261,7 @@
 			(pintype "passive")
 			(uuid "1e0d19a6-865b-4b1f-b8f3-7ce95dc75922")
 		)
-		(model "/Users/slawekgonet/Documents/KiCad/8.0/3dmodels/DG306-SERIE 5 (2-14 PIN)/TERMINAL BLOCK -4/BLUE/4 PIN DG306-5 BLUE - PITCH 5 mm.stp"
+		(model "${KICAD8_3DMODEL_DIR}/TerminalBlock_Phoenix.3dshapes/TerminalBlock_Phoenix_MKDS-1,5-4_1x04_P5.00mm_Horizontal.step"
 			(offset
 				(xyz 15 0 0)
 			)
@@ -3269,7 +3269,7 @@
 				(xyz 1 1 1)
 			)
 			(rotate
-				(xyz -90 0 -90)
+				(xyz 0 0 180)
 			)
 		)
 	)
@@ -3519,7 +3519,7 @@
 			(pintype "passive")
 			(uuid "be6093b3-b897-46ac-8c1f-5f334269ac55")
 		)
-		(model "/Users/slawekgonet/Documents/KiCad/8.0/3dmodels/DG306-SERIE 5 (2-14 PIN)/TERMINAL BLOCK -3/BLUE/3 PIN DG306-5 BLUE - PITCH 5 mm.stp"
+		(model "${KICAD8_3DMODEL_DIR}/TerminalBlock_Phoenix.3dshapes/TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal.step"
 			(offset
 				(xyz 10 0 0)
 			)
@@ -3527,7 +3527,7 @@
 				(xyz 1 1 1)
 			)
 			(rotate
-				(xyz -90 0 -90)
+				(xyz 0 0 180)
 			)
 		)
 	)
@@ -4872,15 +4872,15 @@
 			(pintype "passive")
 			(uuid "f3cdfae7-7459-43b4-8637-c3622361ac6f")
 		)
-		(model "/Users/slawekgonet/Documents/KiCad/8.0/3dmodels/DG306-SERIE 5 (2-14 PIN)/TERMINAL BLOCK -3/BLUE/3 PIN DG306-5 BLUE - PITCH 5 mm.stp"
+		(model "${KICAD8_3DMODEL_DIR}/TerminalBlock_Phoenix.3dshapes/TerminalBlock_Phoenix_MKDS-1,5-3_1x03_P5.00mm_Horizontal.step"
 			(offset
-				(xyz 10 0 0)
+				(xyz 10.08 0 0)
 			)
 			(scale
 				(xyz 1 1 1)
 			)
 			(rotate
-				(xyz -90 0 -90)
+				(xyz 0 0 180)
 			)
 		)
 	)
@@ -5116,7 +5116,7 @@
 		(layer "Edge.Cuts")
 		(uuid "d49ad3ec-5b06-4cfd-b7c2-c5ff9bbb98e3")
 	)
-	(gr_text_box "feed-selector\n20240822-r1\nmaho mh300m\nslawekgonet.pl"
+	(gr_text_box "feed-selector\n20240822-r1\nMAHO mh300m\nslawekgonet.pl"
 		(start 82.804 52.324)
 		(end 93.98 58.42)
 		(layer "F.SilkS")

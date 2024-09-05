@@ -4,6 +4,10 @@
 	(generator_version "8.0")
 	(uuid "43cb8722-391e-4919-ae46-8bb6336d3770")
 	(paper "A5")
+	(title_block
+		(title "MAHO MH300M Feed Controller")
+		(rev "20240822-r1")
+	)
 	(lib_symbols
 		(symbol "00_MCU_Module:Arduino_Pro_Mini"
 			(exclude_from_sim no)
@@ -3701,7 +3705,7 @@
 		)
 		(uuid "80bbd02e-bc4c-498b-93f9-3186213ec5a9")
 	)
-	(text_box "10mA max"
+	(text_box "5mA max"
 		(exclude_from_sim no)
 		(at 76.2 130.81 0)
 		(size 12.7 3.81)

@@ -1,0 +1,12 @@
+"Id";"Designator";"Footprint";"Quantity";"Designation";"Supplier and ref";
+1;"C1";"CP_Radial_D4.0mm_P2.00mm";1;"10uF 16V";;;
+2;"J4";"JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical";1;"UART";;;
+3;"R1";"R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal";1;"R8K3";;;
+4;"U1";"TSSOP14_MC_MCH";1;"MCP41HV51-103E/ST";;;
+5;"J1";"TerminalBlock_bornier-4_P5.08mm";1;"CREEP/RAPID";;;
+6;"J3";"TerminalBlock_bornier-3_P5.08mm";1;"POT";;;
+7;"PRO_MINI1";"Arduino_Pro_Mini";1;"~";;;
+8;"C3";"C_Disc_D5.0mm_W2.5mm_P2.50mm";1;"100nF";;;
+9;"SW1";"SW_PUSH_6mm";1;"CLEAR_EEPROM";;;
+10;"J2";"TerminalBlock_bornier-3_P5.08mm";1;"512C";;;
+11;"D1";"LED_D5.0mm";1;"LED";;;
